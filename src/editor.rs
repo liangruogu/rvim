@@ -2,7 +2,29 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, read};
 use crossterm::style::{Color, Stylize};
 use crossterm::{cursor, execute, terminal};
-use std::io::{Stdout, stdout};
+use std::fs::File;
+use std::io::{BufReader, Stdout, stdout};
+use std::path::PathBuf;
+
+struct Buffer {
+    file_path: PathBuf,
+    lines: Vec<Vec<String>>,
+}
+impl Buffer {
+    fn new(file_path: PathBuf) -> Self {
+        let file = File::open(&file_path).expect(&format!(
+            "Unable to open the {}",
+            &file_path.to_str().unwrap()
+        ));
+        let reader = BufReader::new(file);
+        for (index, line) in reader {}
+        let lines = vec![];
+        Buffer {
+            file_path,
+            lines: lines,
+        }
+    }
+}
 
 #[derive(Debug)]
 enum Mode {
@@ -12,8 +34,8 @@ enum Mode {
 impl Mode {
     fn into_uppcase(&self) -> String {
         match self {
-            Mode::Normal => "normal".to_uppercase(),
-            Mode::Insert => "insert".to_uppercase(),
+            Mode::Normal => " normal ".to_uppercase(),
+            Mode::Insert => " insert ".to_uppercase(),
         }
     }
 }
@@ -27,6 +49,8 @@ enum Action {
     Quit,
 
     EnterMode(Mode),
+
+    InsertChar(char),
 }
 
 #[derive(Debug)]
@@ -71,6 +95,7 @@ impl Editor {
         if let Event::Key(key) = ev {
             match key.code {
                 KeyCode::Esc => return Ok(Some(Action::EnterMode(Mode::Normal))),
+                KeyCode::Char(c) => return Ok(Some(Action::InsertChar(c))),
                 _ => return Ok(None),
             };
         };
@@ -96,11 +121,11 @@ impl Editor {
     }
 
     pub fn run(&mut self) -> Result<()> {
-        execute!(self.stdout, terminal::Clear(terminal::ClearType::All))?;
         terminal::enable_raw_mode()?;
-        execute!(self.stdout, terminal::Clear(terminal::ClearType::All))?;
         execute!(self.stdout, terminal::EnterAlternateScreen)?;
+        execute!(self.stdout, terminal::Clear(terminal::ClearType::All))?;
         loop {
+            self.draw()?;
             let ev = read()?;
             if let Some(action) = self.handle_event(ev).unwrap() {
                 match action {
@@ -109,10 +134,13 @@ impl Editor {
                     Action::MoveRight => self.cx = self.cx.saturating_add(1),
                     Action::MoveLeft => self.cx = self.cx.saturating_sub(1),
                     Action::EnterMode(new_mode) => self.mode = new_mode,
+                    Action::InsertChar(c) => {
+                        execute!(self.stdout, crossterm::style::Print(c))?;
+                        self.cx = self.cx.saturating_add(1);
+                    }
                     Action::Quit => break,
                 }
             }
-            let _ = self.draw();
         }
         execute!(self.stdout, terminal::LeaveAlternateScreen)?;
         terminal::disable_raw_mode()?;
